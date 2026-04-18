@@ -27,19 +27,8 @@ struct AppListView: View {
 
     @State var latestVersionString: String?
 
-    @AppStorage("isAdvertisementHiddenV2")
-    var isAdvertisementHidden: Bool = false
-
     @AppStorage("isWarningHidden")
     var isWarningHidden: Bool = false
-
-    var shouldShowAdvertisement: Bool {
-        !isAdvertisementHidden &&
-            !appList.filter.isSearching &&
-            !appList.filter.showPatchedOnly &&
-            !appList.isRebuildNeeded &&
-            !appList.isSelectorMode
-    }
 
     var appString: String {
         let appNameString = Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "TrollFools"
@@ -123,10 +112,6 @@ struct AppListView: View {
                 selectorOpenedURL = urlIdent
             }
             .onAppear {
-                if Double.random(in: 0 ..< 1) < 0.1 {
-                    isAdvertisementHidden = false
-                }
-
                 CheckUpdateManager.shared.checkUpdateIfNeeded { latestVersion, _ in
                     DispatchQueue.main.async {
                         withAnimation {
@@ -204,16 +189,8 @@ struct AppListView: View {
 
     var searchableListView: some View {
         listView
-            .onChange(of: appList.filter.showPatchedOnly) { showPatchedOnly in
-                if let searchBar = searchViewModel.searchController?.searchBar {
-                    reloadSearchBarPlaceholder(searchBar, showPatchedOnly: showPatchedOnly)
-                }
-            }
             .onReceive(searchViewModel.$searchKeyword) {
                 appList.filter.searchKeyword = $0
-            }
-            .onReceive(searchViewModel.$searchScopeIndex) {
-                appList.activeScope = Scope(rawValue: $0) ?? .all
             }
             .introspect(.viewController, on: .iOS(.v14, .v15, .v16, .v17, .v18)) { viewController in
                 viewController.navigationItem.hidesSearchBarWhenScrolling = true
@@ -238,21 +215,13 @@ struct AppListView: View {
     var listView: some View {
         List {
             topSection
-
-            if #available(iOS 15, *) {
-                if appList.activeScope == .all && shouldShowAdvertisement {
-                    advertisementSection
-                }
-            }
-
             appSections
         }
         .animation(.easeOut, value: combines(
             appList.isRebuildNeeded,
             appList.activeScope,
             appList.filter,
-            appList.unsupportedCount,
-            shouldShowAdvertisement
+            appList.unsupportedCount
         ))
         .listStyle(.insetGrouped)
         .navigationTitle(appList.isSelectorMode ?
@@ -261,14 +230,6 @@ struct AppListView: View {
         )
         .navigationBarTitleDisplayMode((AppListModel.isLegacyDevice || appList.isSelectorMode) ? .inline : .automatic)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                if appList.isSelectorMode, let selectorURL = appList.selectorURL {
-                    VStack {
-                        Text(selectorURL.lastPathComponent).font(.headline)
-                        Text(NSLocalizedString("Select Application to Inject", comment: "")).font(.caption)
-                    }
-                }
-            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     appList.filter.showPatchedOnly.toggle()
@@ -393,37 +354,6 @@ struct AppListView: View {
         .id("AppSection-\(sectionKey)")
     }
 
-    @available(iOS 15.0, *)
-    var advertisementSection: some View {
-        Section {
-            Button {
-                UIApplication.shared.open(App.advertisementApp.url)
-            } label: {
-                if #available(iOS 16, *) {
-                    AppListCell(app: App.advertisementApp)
-                } else {
-                    AppListCell(app: App.advertisementApp)
-                        .padding(.vertical, 4)
-                }
-            }
-            .foregroundColor(.primary)
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button {
-                    isAdvertisementHidden = true
-                } label: {
-                    Label(NSLocalizedString("Hide", comment: ""), systemImage: "eye.slash")
-                }
-                .tint(.red)
-            }
-        } header: {
-            paddedHeaderFooterText(NSLocalizedString("Advertisement", comment: ""))
-                .textCase(.none)
-        } footer: {
-            paddedHeaderFooterText(NSLocalizedString("Buy our paid products to support us if you like TrollFools!", comment: ""))
-        }
-        .id("AdsSection")
-    }
-
     @ViewBuilder
     var footer: some View {
         if #available(iOS 16, *) {
@@ -481,8 +411,6 @@ struct AppListView: View {
         }
 
         searchController.searchBar.delegate = searchViewModel
-        searchController.searchBar.showsScopeBar = true
-        searchController.searchBar.scopeButtonTitles = Scope.allCases.map { $0.localizedShortName }
         searchController.searchBar.autocapitalizationType = .none
         searchController.searchBar.autocorrectionType = .no
 
