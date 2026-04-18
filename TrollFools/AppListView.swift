@@ -83,7 +83,7 @@ struct AppListView: View {
 
     var content: some View {
         styledNavigationView
-            .animation(.easeOut, value: appList.filteredApps)
+            .animation(.easeOut, value: appList.filteredApps.count)   // ✅ 修复动画
             .sheet(item: $selectorOpenedURL) { urlWrapper in
                 AppListView()
                     .environmentObject(AppListModel(selectorURL: urlWrapper.url))
@@ -133,7 +133,6 @@ struct AppListView: View {
         NavigationView {
             refreshableListView
 
-            // Detail view shown when nothing has been selected
             if !appList.isSelectorMode {
                 PlaceholderView()
             }
@@ -216,11 +215,7 @@ struct AppListView: View {
                 footer
             }
         }
-        .animation(.easeOut, value: combines(
-            appList.isRebuildNeeded,
-            appList.filter,
-            appList.unsupportedCount
-        ))
+        .animation(.easeOut, value: appList.filteredApps.count)   // ✅ 修复动画
         .listStyle(.insetGrouped)
         .navigationTitle(appList.isSelectorMode ?
             NSLocalizedString("Select Application to Inject", comment: "") :
