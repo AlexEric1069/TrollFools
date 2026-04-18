@@ -51,7 +51,7 @@ final class AppListModel: ObservableObject {
     var isSelectorMode: Bool { selectorURL != nil }
 
     @Published var filter = FilterOptions()
-    @Published var activeScope: Scope = .all
+    @Published var activeScope: Scope = .all   // 固定为 .all，不再由 UI 切换
     @Published var activeScopeApps: OrderedDictionary<String, [App]> = [:]
 
     @Published var unsupportedCount: Int = 0
@@ -131,16 +131,8 @@ final class AppListModel: ObservableObject {
             filteredApplications = filteredApplications.filter { $0.isInjected || $0.hasPersistedAssets }
         }
 
-        switch activeScope {
-        case .all:
-            activeScopeApps = Self.groupedAppList(filteredApplications)
-        case .user:
-            activeScopeApps = Self.groupedAppList(filteredApplications.filter { $0.isUser })
-        case .troll:
-            activeScopeApps = Self.groupedAppList(filteredApplications.filter { $0.isFromTroll })
-        case .system:
-            activeScopeApps = Self.groupedAppList(filteredApplications.filter { $0.isFromApple })
-        }
+        // 始终按 .all 分组，不再根据 activeScope 筛选（但保留原有 .all 逻辑）
+        activeScopeApps = Self.groupedAppList(filteredApplications)
     }
 
     private static let excludedIdentifiers: Set<String> = [
