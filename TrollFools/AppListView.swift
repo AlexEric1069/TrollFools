@@ -6,11 +6,8 @@
 //
 
 import CocoaLumberjackSwift
-import OrderedCollections
 import SwiftUI
 import SwiftUIIntrospect
-
-typealias Scope = AppListModel.Scope
 
 struct AppListView: View {
     let isPad: Bool = UIDevice.current.userInterfaceIdiom == .pad
@@ -20,7 +17,6 @@ struct AppListView: View {
     @Environment(\.verticalSizeClass) var verticalSizeClass
 
     @State var selectorOpenedURL: URLIdentifiable? = nil
-    @State var selectedIndex: String? = nil
 
     @State var isWarningPresented = false
     @State var temporaryOpenedURL: URLIdentifiable? = nil
@@ -87,7 +83,7 @@ struct AppListView: View {
 
     var content: some View {
         styledNavigationView
-            .animation(.easeOut, value: appList.activeScopeApps.keys)
+            .animation(.easeOut, value: appList.filteredApps)
             .sheet(item: $selectorOpenedURL) { urlWrapper in
                 AppListView()
                     .environmentObject(AppListModel(selectorURL: urlWrapper.url))
@@ -135,24 +131,7 @@ struct AppListView: View {
 
     var navigationView: some View {
         NavigationView {
-            ScrollViewReader { reader in
-                ZStack {
-                    refreshableListView
-
-                    if verticalSizeClass == .regular && appList.activeScopeApps.keys.count > 1 {
-                        IndexableScroller(
-                            indexes: appList.activeScopeApps.keys.elements,
-                            currentIndex: $selectedIndex
-                        )
-                        .accessibilityHidden(true)
-                    }
-                }
-                .onChange(of: selectedIndex) { index in
-                    if let index {
-                        reader.scrollTo("AppSection-\(index)", anchor: .center)
-                    }
-                }
-            }
+            refreshableListView
 
             // Detail view shown when nothing has been selected
             if !appList.isSelectorMode {
@@ -215,11 +194,30 @@ struct AppListView: View {
     var listView: some View {
         List {
             topSection
-            appSections
+
+            ForEach(appList.filteredApps, id: \.bid) { app in
+                NavigationLink {
+                    if appList.isSelectorMode, let selectorURL = appList.selectorURL {
+                        InjectView(app, urlList: [selectorURL])
+                    } else {
+                        OptionView(app)
+                    }
+                } label: {
+                    if #available(iOS 16, *) {
+                        AppListCell(app: app)
+                    } else {
+                        AppListCell(app: app)
+                            .padding(.vertical, 4)
+                    }
+                }
+            }
+
+            if !appList.isSelectorMode && !appList.filter.isSearching {
+                footer
+            }
         }
         .animation(.easeOut, value: combines(
             appList.isRebuildNeeded,
-            appList.activeScope,
             appList.filter,
             appList.unsupportedCount
         ))
@@ -261,18 +259,16 @@ struct AppListView: View {
             }
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
-                if appList.activeScope == .all && latestVersionString != nil {
+                if latestVersionString != nil {
                     upgradeButton
                         .transition(.opacity)
                 }
 
                 if !appList.filter.isSearching && !appList.filter.showPatchedOnly && !appList.isRebuildNeeded {
                     paddedHeaderFooterText(
-                        appList.activeScope == .system
-                            ? NSLocalizedString("Only removable system applications are eligible and listed.", comment: "")
-                            : (appList.activeScope != .troll && appList.unsupportedCount > 0
-                                ? String(format: NSLocalizedString("And %d more unsupported user applications.", comment: ""), appList.unsupportedCount)
-                                : "")
+                        appList.unsupportedCount > 0
+                            ? String(format: NSLocalizedString("And %d more unsupported user applications.", comment: ""), appList.unsupportedCount)
+                            : ""
                     )
                     .transition(.opacity)
                 }
@@ -313,45 +309,6 @@ struct AppListView: View {
             Text(String(format: NSLocalizedString("New version %@ available!", comment: ""), latestVersionString ?? "(null)"))
                 .font(.footnote)
         }
-    }
-
-    var appSections: some View {
-        ForEach(appList.activeScopeApps.isEmpty ? ["_"] : Array(appList.activeScopeApps.keys), id: \.self) { sectionKey in
-            appSection(forKey: sectionKey)
-        }
-    }
-
-    func appSection(forKey sectionKey: String) -> some View {
-        Section {
-            ForEach(appList.activeScopeApps[sectionKey] ?? [], id: \.bid) { app in
-                NavigationLink {
-                    if appList.isSelectorMode, let selectorURL = appList.selectorURL {
-                        InjectView(app, urlList: [selectorURL])
-                    } else {
-                        OptionView(app)
-                    }
-                } label: {
-                    if #available(iOS 16, *) {
-                        AppListCell(app: app)
-                    } else {
-                        AppListCell(app: app)
-                            .padding(.vertical, 4)
-                    }
-                }
-            }
-        } header: {
-            if sectionKey == "_" {
-                paddedHeaderFooterText(NSLocalizedString("No Applications", comment: ""))
-                    .textCase(.none)
-            } else {
-                paddedHeaderFooterText(sectionKey == selectedIndex ? "→ \(sectionKey)" : sectionKey)
-            }
-        } footer: {
-            if (sectionKey == "_" || sectionKey == appList.activeScopeApps.keys.last) && !appList.isSelectorMode && !appList.filter.isSearching {
-                footer
-            }
-        }
-        .id("AppSection-\(sectionKey)")
     }
 
     @ViewBuilder
