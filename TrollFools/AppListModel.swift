@@ -51,8 +51,9 @@ final class AppListModel: ObservableObject {
     var isSelectorMode: Bool { selectorURL != nil }
 
     @Published var filter = FilterOptions()
-    @Published var activeScope: Scope = .all   // 固定为 .all，不再由 UI 切换
-    @Published var activeScopeApps: OrderedDictionary<String, [App]> = [:]
+    @Published var activeScope: Scope = .all
+    @Published var filteredApps: [App] = []          // 扁平列表，用于 UI 展示
+    @Published var activeScopeApps: OrderedDictionary<String, [App]> = [:]  // 保留但不再用于 UI
 
     @Published var unsupportedCount: Int = 0
 
@@ -113,26 +114,26 @@ final class AppListModel: ObservableObject {
     }
 
     func performFilter() {
-        var filteredApplications = _allApplications
+        var filtered = _allApplications
 
         if !filter.searchKeyword.isEmpty {
-            filteredApplications = filteredApplications.filter {
-                $0.name.localizedCaseInsensitiveContains(filter.searchKeyword) || $0.bid.localizedCaseInsensitiveContains(filter.searchKeyword) ||
-                    (
-                        $0.latinName.localizedCaseInsensitiveContains(
-                            filter.searchKeyword
-                                .components(separatedBy: .whitespaces).joined()
-                        )
-                    )
+            filtered = filtered.filter {
+                $0.name.localizedCaseInsensitiveContains(filter.searchKeyword) ||
+                $0.bid.localizedCaseInsensitiveContains(filter.searchKeyword) ||
+                $0.latinName.localizedCaseInsensitiveContains(
+                    filter.searchKeyword.components(separatedBy: .whitespaces).joined()
+                )
             }
         }
 
         if filter.showPatchedOnly {
-            filteredApplications = filteredApplications.filter { $0.isInjected || $0.hasPersistedAssets }
+            filtered = filtered.filter { $0.isInjected || $0.hasPersistedAssets }
         }
 
-        // 始终按 .all 分组，不再根据 activeScope 筛选（但保留原有 .all 逻辑）
-        activeScopeApps = Self.groupedAppList(filteredApplications)
+        // 按 .all 分组，但不再用于 UI（仅用于兼容可能的外部调用）
+        activeScopeApps = Self.groupedAppList(filtered)
+        // 扁平列表直接赋值
+        filteredApps = filtered
     }
 
     private static let excludedIdentifiers: Set<String> = [
@@ -210,7 +211,6 @@ extension AppListModel {
     }
 
     func rebuildIconCache() {
-        // Sadly, we can't call `trollstorehelper` directly because only TrollStore can launch it without error.
         DispatchQueue.global(qos: .userInitiated).async {
             LSApplicationWorkspace.default().openApplication(withBundleID: "com.opa334.TrollStore")
         }
